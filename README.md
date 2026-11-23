@@ -8,9 +8,67 @@ Research / education only. **Not financial advice. Never places trades.**
 
 ## Watchlist UI
 
-Local desk at **http://127.0.0.1:8081** — Live / Top filters, Stocks vs ETFs split, TraderGrader highlights, and scored contracts:
+Local desk at **http://127.0.0.1:8081**:
 
 ![xtracker-v2 watchlist](docs/watchlist.png)
+
+### Buttons (chips)
+
+| Button | What it does |
+|---|---|
+| **Live** | Live option contracts only (parsed call/put + strike). Default view. |
+| **Top** | Same table, but only rows where a poster is on the TraderGrader **green** list. Sorts by TG rank (best first). |
+| **Flagged** | Posts that are **not** live calls: no real strike, two outcomes / conditional, or a trade idea that was never entered. Not scored. |
+| **All** | Live contracts and flagged notes together. |
+| **Both** | Show ETFs/indexes and stocks in one table (two sections when Both is on). |
+| **Stocks** | Only single-name tickers (MU, NVDA, AAPL, …). |
+| **ETFs** | Only ETF / index underlyings: SPY, QQQ, IWM, SPX, SPXW, XSP, NDX, RUT, VIX, DIA, TQQQ, SQQQ, UVXY, VXX. |
+| **Complete list** | Flat sorted rows (no ticker grouping). |
+| **Group by ticker** | Group header per ticker, contracts under it. |
+
+Click a column header (Time, Ticker, Strike, Conf, TG, …) to sort. Click again to flip ascending / descending.
+
+### Table columns
+
+| Column | Meaning | How it is calculated |
+|---|---|---|
+| **Time ET** | Latest post time on this contract (America/New_York). | Max `posted_at` among all posts merged into the row. |
+| **Ticker** | Underlying symbol. | Parsed from the post (`SPXW` normalized to `SPX`). |
+| **C/P** | Call or put. | Parsed side (`C` / `P`). |
+| **Strike** | Option strike. | Parsed strike number. |
+| **Expiry** | Expiration label. | Explicit date in the post, else assumed (e.g. 0DTE / weekly) with an `exp-assumed` flag when guessed. |
+| **Entry** | Premium from the **first** post on this contract that had an entry. | Parsed `$` / `@` / `at` style fill; later posters show their own entry next to their handle in **Poster(s)**. |
+| **Opt last/mid** | Live option mark. | Robinhood (or Yahoo) **last** / **mid** where mid = `(bid + ask) / 2` when both sides exist. `-` if no quote. |
+| **Undl** | Underlying last price. | Equity/index quote (Robinhood for stocks; Yahoo for index symbols like SPX/XSP). |
+| **Dist %** | How far the strike is from the underlying. | `(strike − undl) / undl × 100`. Positive = strike above spot; negative = below. Used with side for ITM/OTM in **Why**. |
+| **#Post** | How many distinct posters agree on this contract. | Count of unique handles on the same ticker / strike / C\|P / expiry. |
+| **Conf** | Confidence 0–100 (not a predicted return). | Weighted score from market context + quote quality + consensus (see below). Color: ≥75 high, 50–74 mid, &lt;50 low. |
+| **TG** | TraderGrader badge. | Best (lowest) rank among posters from `tradergrader.json`. Green / orange / yellow tint the row and handle. |
+| **Poster(s)** | Who posted it. | Unique handles; each can show avatar, their latest entry, and a link to their post. |
+| **Why / flags** | Short reasons behind Conf, plus parser tags. | Built during scoring (ITM/OTM, trend, mark vs entry, …) plus flags like `exp-assumed`, `no-entry`, `strike-far`, `flow`. |
+| **Post** | Link out. | URL of the latest post on the row (or first if only one). |
+
+One row = one contract. Multiple posts from the same or different people on that contract are merged; they are not duplicated as separate rows.
+
+### Confidence score (Conf)
+
+`Conf` is a 0–100 research score. Parts with no data are dropped and the rest is rescaled.
+
+| Part | Max weight | Idea |
+|---|---:|---|
+| Moneyness | 20 | Closer ITM / near ATM scores higher (tighter band for 0DTE). |
+| Trend | 20 | Spot vs VWAP and vs open, in the direction of the call/put. |
+| Reach | 10 | Strike vs day high (calls) or day low (puts). |
+| Relative volume | 10 | Intraday volume vs recent average (when available). |
+| Option quality | 20 | Bid/ask spread, liquidity (volume + OI), mark vs entry, high IV penalty. |
+| Consensus | 10 | More distinct posters on the same contract → higher. |
+| Poster credibility | 10 | From X profile age / followers when that metadata is present. |
+
+Robinhood quote-only underlyings often lack VWAP/open/high/low, so trend / reach / RVOL may be skipped and Conf is rescaled from what remains.
+
+### KPI strip
+
+The numbers under the title (Posts, Live calls, Contracts, Calls/Puts, Conf bands, ≥2 posters, Flagged) are counts from the current day’s scored table and flagged list.
 
 ## What it does
 
@@ -112,13 +170,7 @@ python xtracker.py --with-x-api --plugin --now
 
 Needs `x_token.json` (gitignored). Prefer plugin-only.
 
-## Watchlist tips
-
-- **Live / Top / Flagged / All** — scope chips
-- **Both / Stocks / ETFs** — ticker kind split
-- **Complete list / Group by ticker** — layout
-- **TG** column — TraderGrader rank when the poster is on the list
-- Edit `tradergrader.json` to add handles; the tracker reloads it on the next refresh (no code change)
+Edit `tradergrader.json` to change green / orange / yellow handles; the tracker reloads it on the next refresh (no code change).
 
 ## Layout
 
