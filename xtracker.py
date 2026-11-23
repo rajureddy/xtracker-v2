@@ -264,6 +264,8 @@ class Tracker:
         self.session_start = session_start  # ET; posts before this are ignored
         self.groups: "OrderedDict[tuple, list[OptionCall]]" = OrderedDict()
         self._quotes: dict[tuple, dict] = {}
+        self._peaks: dict[tuple, float] = {}   # contract key -> high-water option mark
+        self._marks: dict[tuple, float] = {}   # contract key -> last seen mark (for arrows)
         self.quotes_fetched = 0
         self.quotes_cached = 0
         self.users: dict = {}
@@ -289,6 +291,8 @@ class Tracker:
         with self._lock:
             self.groups.clear()
             self._quotes.clear()
+            self._peaks.clear()
+            self._marks.clear()
             self.users.clear()
             self.rows = []
             self.quotes_fetched = 0
@@ -308,6 +312,7 @@ class Tracker:
         try:
             n_calls = self._load_calls()
             n_flags = self._load_flagged()
+            self._load_peaks()
         except OSError as e:
             self.load_note = f"could not read logs: {e}"
             return
@@ -454,6 +459,30 @@ class Tracker:
         sig = (tuple(handles), entry, base_flags, cred, first.expiry == asof.date())
         return first, handles, entry, cred, base_flags, sig
 
+    @staticmethod
+    def _opt_mark(q) -> float | None:
+        if q is None:
+            return None
+        if q.mid is not None:
+            return float(q.mid)
+        if q.last is not None:
+            return float(q.last)
+        return None
+
+    def _note_mark(self, key: tuple, q, entry: float | None) -> tuple[float | None, float | None, str | None]:
+        """Track high-water peak. Green up at/near peak; red down once the mark falls off the high."""
+        mark = self._opt_mark(q)
+        if mark is None:
+            return None, self._peaks.get(key), None
+        peak = self._peaks.get(key)
+        if peak is None or mark > peak:
+            peak = mark
+            self._peaks[key] = peak
+        self._marks[key] = mark
+        # At the captured peak → ▲; anything under the peak → ▼
+        move = "up" if mark >= peak - 1e-9 else "down"
+        return mark, peak, move
+
     def _score_row(self, calls, asof: datetime, u, q, with_quotes: bool):
         first, handles, entry, cred, base_flags, sig = self._contract_inputs(calls, asof)
         posters = len(handles)
@@ -468,8 +497,15 @@ class Tracker:
             sc.total = min(sc.total, 10)
         if "expired" in flags:
             sc.total = 0
+        mark = peak = None
+        move = None
+        if with_quotes:
+            mark, peak, move = self._note_mark(first.key, q, entry)
+        elif first.key in self._peaks:
+            peak = self._peaks[first.key]
+            mark = self._marks.get(first.key)
         row = dict(first=first, calls=calls, handles=handles, entry=entry, u=u, q=q, score=sc,
-                   flags=flags, posters=posters)
+                   flags=flags, posters=posters, mark=mark, peak=peak, move=move)
         return row, sig
 
     def _fetch_quotes(self, first, asof: datetime, und_now: dict):
@@ -479,6 +515,44 @@ class Tracker:
         q = None if (first.expiry and first.expiry < asof.date()) else \
             self.md.option(first.ticker, first.expiry, first.opt_type, first.strike)
         return und_now[ticker], q
+
+    def _load_peaks(self):
+        """Restore today's peak marks from scores CSV so a restart keeps the high-water print."""
+        if not self.scores_csv.exists():
+            return
+        with self.scores_csv.open(newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                raw = (row.get("opt_peak") or "").strip()
+                if not raw:
+                    continue
+                try:
+                    peak = float(raw)
+                except ValueError:
+                    continue
+                ticker = (row.get("ticker") or "").upper()
+                typ = (row.get("type") or "").upper()[:1]
+                try:
+                    strike = float(row.get("strike") or "")
+                except ValueError:
+                    continue
+                exp_label = row.get("expiry") or ""
+                # Match live group keys: prefer ISO expiry from calls group if present.
+                key = None
+                for k in self.groups:
+                    if k[0] == ticker and k[1] == strike and k[2] == typ:
+                        key = k
+                        break
+                if key is None:
+                    key = (ticker, strike, typ, exp_label)
+                prev = self._peaks.get(key)
+                if prev is None or peak > prev:
+                    self._peaks[key] = peak
+                mark_raw = (row.get("opt_mid") or row.get("opt_last") or "").strip()
+                if mark_raw:
+                    try:
+                        self._marks[key] = float(mark_raw)
+                    except ValueError:
+                        pass
 
     def _set_rows(self, by_key: dict, items):
         rows = [by_key[k] for k, _ in items if k in by_key]
@@ -501,7 +575,10 @@ class Tracker:
             if fresh:
                 self.quotes_cached += 1
                 if hit.get("sig") == sig and hit.get("row"):
-                    by_key[key] = dict(hit["row"], calls=calls)
+                    row = dict(hit["row"], calls=calls)
+                    row["peak"] = self._peaks.get(key, row.get("peak"))
+                    row["mark"] = self._marks.get(key, row.get("mark"))
+                    by_key[key] = row
                     continue
                 row, sig = self._score_row(calls, asof, hit["u"], hit["q"], True)
                 self._quotes[key] = dict(hit, sig=sig, row=row)
@@ -513,7 +590,10 @@ class Tracker:
                 continue
             fetch_keys.append(key)
             if hit and hit.get("row"):
-                by_key[key] = dict(hit["row"], calls=calls)
+                row = dict(hit["row"], calls=calls)
+                row["peak"] = self._peaks.get(key, row.get("peak"))
+                row["mark"] = self._marks.get(key, row.get("mark"))
+                by_key[key] = row
         calls_by = dict(items)
         for key in fetch_keys:
             if key not in by_key:
@@ -544,12 +624,14 @@ class Tracker:
     def _write_scores(self, asof):
         with self.scores_csv.open("w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
-            w.writerow(["asof_et", "ticker", "type", "strike", "expiry", "entry", "opt_last", "opt_mid", "underlying",
-                        "dist_pct", "posters", "confidence", "reasons", "flags", "handles", "first_url"])
+            w.writerow(["asof_et", "ticker", "type", "strike", "expiry", "entry", "opt_last", "opt_mid", "opt_peak",
+                        "underlying", "dist_pct", "posters", "confidence", "reasons", "flags", "handles", "first_url"])
             for r in self.rows:
                 c, u, q = r["first"], r["u"], r["q"]
                 w.writerow([asof.strftime("%Y-%m-%d %H:%M"), c.ticker, c.opt_type, c.strike, c.expiry_label, r["entry"],
-                            q.last if q else "", q.mid if q else "", f"{u.price:.2f}" if u else "",
+                            q.last if q else "", q.mid if q else "",
+                            "" if r.get("peak") is None else r["peak"],
+                            f"{u.price:.2f}" if u else "",
                             f"{(c.strike-u.price)/u.price*100:.2f}" if u else "", r.get("posters", len(r["handles"])), r["score"].total,
                             "; ".join(r["score"].reasons), ";".join(r["flags"]), " ".join(r["handles"]), c.url])
 
@@ -673,9 +755,16 @@ def row_view(r, avatars: dict[str, str] | None = None):
         m["url"] = own.url if own else ""
         m["avatar"] = avatars.get((m["handle"] or "").lstrip("@").lower(), "")
     latest = max(r["calls"], key=lambda x: x.posted_at or c.posted_at or datetime.min.replace(tzinfo=ET))
+    peak = r.get("peak")
+    move = r.get("move")
+    peak_pct = None
+    if peak is not None and r["entry"]:
+        peak_pct = round((peak - r["entry"]) / r["entry"] * 100, 1)
     return dict(time=latest.posted_at.strftime("%H:%M") if latest.posted_at else "",
                 ticker=c.ticker, type=c.opt_type, strike=c.strike,
                 expiry=_expiry_display(c), entry=r["entry"], opt="-" if not q else f"{fmt(q.last)}/{fmt(q.mid)}",
+                peak=None if peak is None else round(peak, 2),
+                peak_pct=peak_pct, move=move,
                 underlying=round(u.price, 2) if u else None,
                 dist=round((c.strike - u.price) / u.price * 100, 2) if u else None,
                 posters=r.get("posters", len(r["handles"])), conf=sc.total, handles=r["handles"], marks=marks,
@@ -716,7 +805,7 @@ def build_table(tr: Tracker, asof: datetime, title_extra="", limit=40):
                       + "NOT financial advice",
               header_style="bold cyan", expand=False, show_lines=False)
     for col, j in [("Time ET", "left"), ("Ticker", "left"), ("C/P", "center"), ("Strike", "right"), ("Expiry", "left"),
-                   ("Entry", "right"), ("Opt last/mid", "right"), ("Underlying", "right"), ("Dist", "right"),
+                   ("Entry", "right"), ("Opt last/mid", "right"), ("Peak", "right"), ("Underlying", "right"), ("Dist", "right"),
                    ("#Post", "right"), ("Conf", "right"), ("TG", "right"), ("Poster(s)", "left"), ("Why / flags", "left")]:
         t.add_column(col, justify=j, no_wrap=col not in ("Why / flags",))
     for r in tr.rows[:limit]:
@@ -741,8 +830,17 @@ def build_table(tr: Tracker, asof: datetime, title_extra="", limit=40):
         if len(v["marks"]) > 2:
             hs.append(f" +{len(v['marks']) - 2}", style="grey50")
         grade = Text(f"#{v['grade']}", style=RICH_BAND[v["band"]]) if v["grade"] else Text("-", style="grey50")
+        opt = Text(v["opt"])
+        if v.get("move") == "up":
+            opt.append(" ▲", style="bold bright_green")
+        elif v.get("move") == "down":
+            opt.append(" ▼", style="bold bright_red")
+        peak_txt = fmt(v.get("peak"))
+        if v.get("peak_pct") is not None:
+            peak_txt = f"{peak_txt} ({v['peak_pct']:+.0f}%)"
         t.add_row(v["time"], Text(v["ticker"], style=f"bold {base}"), cp, f"{v['strike']:g}", v["expiry"],
-                  fmt(v["entry"]), v["opt"], fmt(v["underlying"]), "-" if v["dist"] is None else f"{v['dist']:+.2f}%",
+                  fmt(v["entry"]), opt, peak_txt, fmt(v["underlying"]),
+                  "-" if v["dist"] is None else f"{v['dist']:+.2f}%",
                   str(v["posters"]), Text(str(v["conf"]), style=conf_style(v["conf"])), grade, hs, why,
                   style=f"{base}{' bold' if v['posters'] >= 2 else ''}")
     if not tr.flagged:

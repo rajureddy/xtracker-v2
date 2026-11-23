@@ -110,6 +110,9 @@ tr.C td.cp,tr.C td.tk{color:var(--up);font-weight:600}
 tr.P td.cp,tr.P td.tk{color:var(--down);font-weight:600}
 tr.multi td.tk{text-shadow:0 0 6px rgba(57,255,136,.35)}
 .hi{color:var(--amber);font-weight:600}.mid{color:var(--gold)}.lo{color:var(--down);opacity:.9}
+.move{font-size:14px;font-weight:700;margin-left:4px;vertical-align:middle}
+.move.up{color:var(--up)}.move.down{color:var(--down)}.move.flat{color:var(--dim)}
+.peak-pct{color:var(--dim);font-size:11px;margin-left:4px}
 .tg-green{color:#39ff88;font-weight:600}
 .tg-orange{color:#ff9a3c;font-weight:600}
 .tg-yellow{color:#ffe14d;font-weight:600}
@@ -169,7 +172,7 @@ a{color:var(--cyan);text-decoration:none}a:hover{color:var(--amber2);text-decora
   <section class="panel" id="live-panel">
     <div class="tw"><table class="dt"><thead><tr>
       <th data-k="time">Time ET</th><th data-k="ticker">Ticker</th><th data-k="type">C/P</th><th data-k="strike">Strike</th>
-      <th data-k="expiry">Expiry</th><th data-k="entry">Entry</th><th data-k="opt">Opt last/mid</th><th data-k="underlying">Undl</th>
+      <th data-k="expiry">Expiry</th><th data-k="entry">Entry</th><th data-k="opt">Opt last/mid</th><th data-k="peak">Peak</th><th data-k="underlying">Undl</th>
       <th data-k="dist">Dist %</th><th data-k="posters">#Post</th><th data-k="conf">Conf</th><th data-k="grade">TG</th><th>Poster(s)</th><th>Why / flags</th><th>Post</th>
     </tr></thead><tbody id="tb"></tbody></table></div>
     <p class="empty" id="empty" hidden>No live contracts with a real strike and call/put.</p>
@@ -254,12 +257,22 @@ function posterHtml(o){
     return `<span class="poster-chip">${avatarHtml(p.handle,p.avatar)}${name}${ent}</span>`;
   }).join("");
 }
+function moveArrow(m){
+  if(m==="up")return`<span class="move up" title="at session peak">▲</span>`;
+  if(m==="down")return`<span class="move down" title="below session peak">▼</span>`;
+  return"";
+}
+function peakHtml(o){
+  if(o.peak==null)return`<td class="num">-</td>`;
+  const pct=o.peak_pct==null?"":` <span class="peak-pct">(${o.peak_pct>=0?"+":""}${o.peak_pct}%)</span>`;
+  return`<td class="num">${f(o.peak)}${pct}</td>`;
+}
 function rowHtml(o){const cc=o.conf>=75?"hi":o.conf>=50?"mid":"lo";
 const tags=(o.flags&&o.flags.length)?` <span class="tag">[${esc(o.flags.join(","))}]</span>`:"";
 const tg=o.grade?`<td class="num">${tgBadge(o.band,o.grade)}</td>`:`<td class="num">-</td>`;
 const tgCls=o.band?` tg-${o.band} tg-hit`:"";
 return `<tr class="${o.type}${o.posters>=2?" multi":""}${tgCls}"><td class="num">${o.time}</td><td class="tk">${esc(o.ticker)}</td><td class="cp">${o.type=="C"?"CALL":"PUT"}</td>
-<td class="num">${o.strike}</td><td>${esc(o.expiry)}</td><td class="num">${f(o.entry)}</td><td class="num">${esc(o.opt)}</td><td class="num">${f(o.underlying)}</td><td class="num">${o.dist==null?"-":o.dist.toFixed(2)}</td>
+<td class="num">${o.strike}</td><td>${esc(o.expiry)}</td><td class="num">${f(o.entry)}</td><td class="num">${esc(o.opt)}${moveArrow(o.move)}</td>${peakHtml(o)}<td class="num">${f(o.underlying)}</td><td class="num">${o.dist==null?"-":o.dist.toFixed(2)}</td>
 <td class="num">${o.posters}</td><td class="num ${cc}">${o.conf}</td>${tg}<td class="poster">${posterHtml(o)}</td><td class="why">${esc(o.why)}${tags}</td>
 <td>${o.url?`<a href="${esc(o.url)}" target="_blank" rel="noopener">post</a>`:""}</td></tr>`}
 function cmpVal(a,b,k){let x=a[k],y=b[k];if(k==="ticker"){x=(x||"").toString().toUpperCase();y=(y||"").toString().toUpperCase();return x<y?-1:x>y?1:0}
@@ -282,10 +295,10 @@ function groupRows(list){
 }
 function renderBucket(parts,label,list,showHeader){
   if(!list.length)return;
-  if(showHeader)parts.push(`<tr class="sec"><td colspan="15">${esc(label)}<span class="n">${list.length} contract${list.length===1?"":"s"}</span></td></tr>`);
+  if(showHeader)parts.push(`<tr class="sec"><td colspan="16">${esc(label)}<span class="n">${list.length} contract${list.length===1?"":"s"}</span></td></tr>`);
   if(layout==="list"){for(const o of sortRows(list))parts.push(rowHtml(o));return}
   for(const g of groupRows(list)){
-    parts.push(`<tr class="grp"><td colspan="15">${esc(g.t)}<span class="n">${g.n} contract${g.n===1?"":"s"}</span><span class="best">best ${g.best<-1e8?"—":g.best}</span></td></tr>`);
+    parts.push(`<tr class="grp"><td colspan="16">${esc(g.t)}<span class="n">${g.n} contract${g.n===1?"":"s"}</span><span class="best">best ${g.best<-1e8?"—":g.best}</span></td></tr>`);
     for(const o of g.items)parts.push(rowHtml(o));
   }
 }
