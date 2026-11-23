@@ -6,6 +6,12 @@ Posts flow **extension → localhost ingest → parser → Robinhood/Yahoo quote
 
 Research / education only. **Not financial advice. Never places trades.**
 
+## Watchlist UI
+
+Local desk at **http://127.0.0.1:8081** — Live / Top filters, Stocks vs ETFs split, TraderGrader highlights, and scored contracts:
+
+![xtracker-v2 watchlist](docs/watchlist.png)
+
 ## What it does
 
 - Scrapes `x.com/home` or `x.com/notifications` from whoever is logged into Chrome (no X API token required in plugin mode)
