@@ -38,7 +38,8 @@ Click a column header (Time, Ticker, Strike, Conf, TG, …) to sort. Click again
 | **Strike** | Option strike. | Parsed strike number. |
 | **Expiry** | Expiration label. | Explicit date in the post, else assumed (e.g. 0DTE / weekly) with an `exp-assumed` flag when guessed. |
 | **Entry** | Premium from the **first** post on this contract that had an entry. | Parsed `$` / `@` / `at` style fill; later posters show their own entry next to their handle in **Poster(s)**. |
-| **Opt last/mid** | Live option mark. | Robinhood (or Yahoo) **last** / **mid** where mid = `(bid + ask) / 2` when both sides exist. `-` if no quote. |
+| **Opt last/mid** | Live option mark + peak arrow. | Robinhood (or Yahoo) **last** / **mid** (mid = `(bid + ask) / 2`). Green **▲** when the mark is at today’s tracked peak; red **▼** when it has fallen below that peak. |
+| **Peak** | High-water option mark while tracking this contract today. | Max mid/last seen since the row started (restored from today’s scores CSV on restart). Shows `%` vs Entry when entry exists. |
 | **Undl** | Underlying last price. | Equity/index quote (Robinhood for stocks; Yahoo for index symbols like SPX/XSP). |
 | **Dist %** | How far the strike is from the underlying. | `(strike − undl) / undl × 100`. Positive = strike above spot; negative = below. Used with side for ITM/OTM in **Why**. |
 | **#Post** | How many distinct posters agree on this contract. | Count of unique handles on the same ticker / strike / C\|P / expiry. |
