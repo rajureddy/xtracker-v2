@@ -1,0 +1,36 @@
+﻿# Secrets — never commit (keep real files local; examples use XXXXXXX)
+x_token.json
+robinhood_token.json
+robinhood_client.json
+.local-secrets/
+.env
+.env.*
+*.pem
+*.key
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# App runtime data
+logs/
+
+# Local probes / scratch
+_wl_probe.py
+_*.py
+
+# OS / editor
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+*~

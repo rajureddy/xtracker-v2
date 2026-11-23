@@ -1,0 +1,6 @@
+{
+  "client_id": "XXXXXXX",
+  "client_name": "Robinhood Trading",
+  "redirect_uris": ["http://127.0.0.1:8766/callback"],
+  "token_endpoint_auth_method": "none"
+}

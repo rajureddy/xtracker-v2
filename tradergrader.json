@@ -1,0 +1,98 @@
+{
+  "note": "Green is the top, then orange, then yellow. Order inside each color is the rank. The tracker reloads this file on the next refresh, so a new handle shows up without a restart. Match the X username; case does not matter.",
+  "sources": [
+    "https://x.com/tradergrader/status/2119503531413795195",
+    "https://x.com/tradergrader/status/2119589536707588587",
+    "https://x.com/tradergrader/status/2119940271186284905",
+    "https://x.com/tradergrader/status/2119938723366502548",
+    "https://x.com/tradergrader/status/2120654633345642802",
+    "https://x.com/tradergrader/status/2120654532376195313",
+    "https://x.com/tradergrader/status/2121391463796015558",
+    "https://x.com/tradergrader/status/2121391606779797777",
+    "https://tradergrader.com/leaderboard?range=d7",
+    "https://tradergrader.com/leaderboard?range=d30",
+    "https://x.com/tradergrader/status/2122029615031947712",
+    "https://x.com/tradergrader/status/2124571812013171181",
+    "https://x.com/tradergrader/status/2124673886365323524"
+  ],
+  "updated_from": {
+    "date": "2026-11-22",
+    "posts": [
+      "https://x.com/tradergrader/status/2124673886365323524"
+    ],
+    "summary": "Green top 10 set to Nov 16–20 Max ROI Breakdown (min 5 trades). Promoted dreamer8five and TheBlueBMs into that top 10. Added missing chart names TradingRaken, Olympforgecirle, RockLeeSPX. Ranks 11–34 remain on the list."
+  },
+  "bands": {
+    "green": [
+      "John0dte",
+      "PordiaProfits",
+      "Mikeoptionss",
+      "MyBankIsFat",
+      "clintoptions",
+      "TradesWithGS_",
+      "CassyTrades",
+      "dreamer8five",
+      "PrintsCash",
+      "TheBlueBMs",
+      "tmoneytips",
+      "onlyonelancelot",
+      "SpyGirlLife",
+      "BreadWinneh",
+      "KoryOptions",
+      "xRichthofen",
+      "BrolicBitcoins",
+      "TheTradingNinja",
+      "itsadripmtrades",
+      "zoeastonks",
+      "Zyverla",
+      "oexcapital101",
+      "VantaSignals",
+      "_0DTE",
+      "TradeArchitect2",
+      "ElonMothz"
+    ],
+    "orange": [
+      "RealBubblesX",
+      "TradingRaken",
+      "Olympforgecirle",
+      "Thehyves",
+      "milkyfilky",
+      "SAMComplete",
+      "capricekayem",
+      "RockLeeSPX",
+      "QuantVisions",
+      "itslila98",
+      "BatsPortfolio",
+      "KASM_Capital",
+      "EYEsotrades",
+      "TrdeToScale",
+      "TheOraclefr",
+      "KapGains_",
+      "astocks92",
+      "em5mil",
+      "labeltrader1122",
+      "LiteProfitLab",
+      "KappaCalls",
+      "UI_Trades",
+      "itsCblast",
+      "tenfourtrades",
+      "MP9Trades",
+      "UltraInstinctRJ",
+      "lamJohnJsmith",
+      "pacificcrestca",
+      "jpsca1ps"
+    ],
+    "yellow": [
+      "AvaScansAI",
+      "ZG121015",
+      "OEABANKZ",
+      "mikalche",
+      "TheMarketRaven"
+    ]
+  },
+  "aliases": {
+    "zoeostonks": "zoeastonks",
+    "_0dte": "_0DTE",
+    "olymforgecirle": "Olympforgecirle"
+  }
+}
