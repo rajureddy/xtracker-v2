@@ -19,10 +19,12 @@ from typing import List, Optional
 
 DAILY_EXPIRY = {"SPY", "QQQ", "SPX", "SPXW", "IWM", "XSP", "NDX"}
 KNOWN_BARE = DAILY_EXPIRY | {"TSLA", "NVDA", "AAPL", "AMZN", "META", "MSFT", "GOOGL", "GOOG", "AMD",
-                             "INTC", "MU", "SMCI", "PLTR", "COIN", "MSTR", "NFLX", "AVGO", "DIA", "TLT", "VIX"}
+                             "INTC", "MU", "SMCI", "PLTR", "COIN", "MSTR", "NFLX", "AVGO", "DIA", "TLT", "VIX",
+                             "IBIT", "TSM", "HOOD", "BABA", "CRWD", "TQQQ", "SQQQ", "UVXY", "VXX"}
 NOT_TICKERS = {"ITM", "OTM", "ATM", "DTE", "EXP", "AM", "PM", "ET", "EST", "EDT", "OI", "IV", "NEW", "AVG",
                "LOTTO", "CALL", "CALLS", "PUT", "PUTS", "THE", "AND", "FOR", "ALERT", "ENTRY", "EXIT", "GM",
-               "HOD", "LOD", "NHOD", "USD", "CPI", "FOMC", "SL", "TP", "PT", "I", "A", "DAY", "TRADE"}
+               "HOD", "LOD", "NHOD", "USD", "CPI", "FOMC", "SL", "TP", "PT", "I", "A", "DAY", "TRADE",
+               "INCASE", "WANTS", "WAKEUP", "SIZE", "LIGHT", "HEAVY", "RISKY"}
 MONTHS = {m: i for i, m in enumerate(["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"], 1)}
 WEEKDAYS = {d: i for i, d in enumerate(["MON", "TUE", "WED", "THU", "FRI"])}
 
@@ -114,11 +116,20 @@ def _norm_ticker(t: str) -> str:
 
 
 def _find_ticker(text: str, pos: int) -> Optional[str]:
-    """Nearest $TICKER before the contract; else a known bare symbol; else one after."""
+    """Nearest $TICKER before the contract; else bare symbol just before strike; else known bare; else after.
+
+    Prefer the symbol next to the contract so later commentary like ``incase $BTC wants to wakeup``
+    cannot steal the ticker from ``Trade Alert IBIT $34C``.
+    """
     before = [(m.start(), m.group(1)) for m in RE_DOLLAR_TICKER.finditer(text) if m.start() < pos]
     before = [b for b in before if b[1].upper() not in NOT_TICKERS]
     if before:
         return _norm_ticker(before[-1][1])
+    # Immediate bare ticker right before the strike (within ~24 chars)
+    near = text[max(0, pos - 24):pos]
+    m = re.search(r"\b([A-Za-z]{1,5})\s*$", near)
+    if m and m.group(1).upper() not in NOT_TICKERS:
+        return _norm_ticker(m.group(1))
     bare = [(m.start(), m.group(1)) for m in RE_BARE_TICKER.finditer(text.upper())
             if m.group(1) in KNOWN_BARE]
     bb = [b for b in bare if b[0] < pos]
@@ -195,24 +206,45 @@ def _parse_expiry(text: str, ticker: str, today: date):
 
 RE_ENTRY_EXPLICIT = re.compile(r"(?:@|(?<!stock )(?<!spot )(?<!price )\bat\b|\bentry(?:\s+mid)?\b|\bfill(?:ed)?\b|\bavg\b|\bfor\b|\bpaid\b)\s*:?\s*\$?\s*(\d*\.\d{1,3}|\d{1,4})(\$)?", re.I)
 RE_ENTRY_BARE = re.compile(r"(?<![\w/$%])\$?(\d*\.\d{1,3})\$?(?![\d%/])")
+# "from the 12.70 entry" / ".16 entry" — number tagged as entry (may sit after commentary)
+RE_ENTRY_TAGGED = re.compile(
+    r"(?:\bfrom\s+(?:the\s+)?|@)?\$?\s*(\d*\.\d{1,3}|\d{1,4})\s+entr(?:y|ies)\b",
+    re.I,
+)
+
+
+def _entry_val(raw: str, flags: list) -> float:
+    val = float(raw)
+    if "." not in raw and val >= 10:
+        # "$63" style quotes usually mean cents (0.63)
+        val = val / 100.0
+        flags.append("cents?")
+    return val
 
 
 def _parse_entry(seg: str):
     """seg = text right after the contract (up to next contract)."""
     s = re.sub(r"\b\d{1,2}/\d{1,2}(/\d{2,4})?\b", " ", seg)          # strip dates
     s = re.sub(r"\b\d\s?DTE\b", " ", s, flags=re.I)
-    s = re.sub(r"\b(stock|spot|price|underlying|pt|target|trigger|stop)\b\W{0,3}(is|at|of|:)?\s*~?\$?\d[\d.,]*", " ", s, flags=re.I)
-    s = re.sub(r"\bclosed\s+at\s*~?\$?\d[\d.,]*", " ", s, flags=re.I)
-    m = RE_ENTRY_EXPLICIT.search(s)
+    # Underlying levels, TP/stop trails, and option marks — not the fill
+    s = re.sub(
+        r"\b(stock|spot|price|underlying|pt|target|trigger|stop'?s?|trail(?:ing)?|tp\d*|option)\b"
+        r"\W{0,3}(is|at|of|:)?\s*~?\$?\d[\d.,]*",
+        " ",
+        s,
+        flags=re.I,
+    )
+    s = re.sub(r"\b\d+m\s+clos(?:e|ed|ing)\s+at\s*~?\$?\d[\d.,]*", " ", s, flags=re.I)
+    s = re.sub(r"\bclos(?:e|ed|ing)\s+at\s*~?\$?\d[\d.,]*", " ", s, flags=re.I)
+    s = re.sub(r"\bthrough\s+tp\d*\s*~?\$?\d[\d.,]*", " ", s, flags=re.I)
     flags = []
+    # Prefer an explicitly tagged entry anywhere in the segment (handles long mid-sentence fills)
+    m = RE_ENTRY_TAGGED.search(s)
+    if m:
+        return _entry_val(m.group(1), flags), flags
+    m = RE_ENTRY_EXPLICIT.search(s)
     if m and m.start() < 40:
-        raw = m.group(1)
-        val = float(raw)
-        if "." not in raw and val >= 10:
-            # "$63" style quotes usually mean cents (0.63)
-            val = val / 100.0
-            flags.append("cents?")
-        return val, flags
+        return _entry_val(m.group(1), flags), flags
     m = RE_ENTRY_BARE.search(s)
     if m and m.start() < 30:
         return float(m.group(1)), flags
