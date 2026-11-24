@@ -332,19 +332,33 @@ class Tracker:
         seen = set()
         with self.calls_csv.open(newline="", encoding="utf-8") as f:
             for row in csv.DictReader(f):
-                c = _call_from_csv(row)
-                if c is None:
-                    continue
-                if _is_prior_gain(c.text or ""):
-                    continue  # day-performance / recap — omit from live
-                sig = (c.post_id, c.key, c.handle, c.entry)
-                if sig in seen:
-                    continue
-                seen.add(sig)
-                self.groups.setdefault(_row_key(c), []).append(c)
-                self.stats["calls"] += 1
-                self._remember_loaded_post(c.post_id)
-                n += 1
+                # Re-parse from stored text so parser fixes (ticker/entry) apply on restart
+                text = (row.get("text") or "").strip()
+                posted = _posted_et(row.get("posted_et") or "")
+                handle = (row.get("handle") or "").strip().lstrip("@")
+                post_id = _status_id_from_url((row.get("url") or "").strip())
+                loaded = []
+                if text and posted is not None:
+                    if _is_prior_gain(text):
+                        continue
+                    parsed, _notes = analyze_post(text, posted, handle, handle, post_id)
+                    loaded = parsed
+                if not loaded:
+                    c = _call_from_csv(row)
+                    if c is None:
+                        continue
+                    if _is_prior_gain(c.text or ""):
+                        continue  # day-performance / recap — omit from live
+                    loaded = [c]
+                for c in loaded:
+                    sig = (c.post_id, c.key, c.handle, c.entry)
+                    if sig in seen:
+                        continue
+                    seen.add(sig)
+                    self.groups.setdefault(_row_key(c), []).append(c)
+                    self.stats["calls"] += 1
+                    self._remember_loaded_post(c.post_id)
+                    n += 1
         return n
 
     def _load_flagged(self) -> int:

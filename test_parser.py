@@ -23,6 +23,12 @@ CASES = [
     ("ADDING HEAVY\n\n$TBBK\n20 NOV 26 $50\n$1.15", ("TBBK", "C", 50, "11/20", 1.15)),
     ("SMALL ACCOUNT CHALLENGE\n$TBBK\n20 NOV 26 $50\n$1.10", ("TBBK", "C", 50, "11/20", 1.10)),
     ("$SPY  09 NOV 26 $716 PUT  $1.15  high risk", ("SPY", "P", 716, "11/09", 1.15)),
+    # Prefer IBIT next to the strike; ignore later $BTC commentary; ".16 entry" past filler words
+    ("Trade Alert IBIT $34C 11/24 Day Trade incase $BTC wants to wakeup .16 entry  @TraderGrader",
+     ("IBIT", "C", 34, "11/24", 0.16)),
+    # TP update: ignore stock close / TP levels; take "from the 12.70 entry"
+    ("TP1 HIT: $TSM 11/27 360P   5m close at 347.66, through TP1 349.26. Option at 16.25, +28.0% from the 12.70 entry",
+     ("TSM", "P", 360, "11/27", 12.70)),
 ]
 NEG = ["$TSLA 395C 10/30 | $1.18 → $4.35 | +269%", "EXIT ALERT $SPX $7785C 10/30/26 @ $0.20", "GM! Happy Friday $SPY $QQQ",
        "1,700 stocks are down 2% or more today", "$AIOK update; $31.09 NHOD",
